@@ -1,0 +1,21 @@
+{
+  "name": "补水管家",
+  "short_name": "补水管家",
+  "description": "每日饮水健康管理与提醒应用",
+  "start_url": "/-app/aquatrack.html",
+  "display": "standalone",
+  "background_color": "#06b6d4",
+  "theme_color": "#06b6d4",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
