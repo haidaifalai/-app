@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark select-none">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>AquaTrack 补水管家 - 安卓原生级饮水管理</title>
+    
+    <!-- Android Native Theme Color & WebApp Capabilities -->
+    <meta name="theme-color" content="#090d16">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'system-ui', '-apple-system', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --sat: env(safe-area-inset-top);
+            --sab: env(safe-area-inset-bottom);
+        }
+        body {
+            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            background-color: #030712;
+            padding-top: var(--sat);
+            padding-bottom: var(--sab);
+            touch-action: manipulation;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.78);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glass-button {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            transition: all 0.15s ease-out;
+        }
+        .glass-button:active {
+            transform: scale(0.96);
+            background: rgba(56, 189, 248, 0.18);
+        }
+        /* Custom Scrollbar for Mobile Smoothness */
+        ::-webkit-scrollbar {
+            width: 3px;
+            height: 3px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.5);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(56, 189, 248, 0.3);
+            border-radius: 9999px;
+        }
+        /* HyperOS Focus Capsule Animation */
+        @keyframes focusSlideDown {
+            0% { transform: translate(-50%, -100%) scale(0.85); opacity: 0; }
+            15% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+            85% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -120%) scale(0.9); opacity: 0; }
+        }
+        .hyperos-focus-active {
+            animation: focusSlideDown 4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between selection:bg-brand-500 selection:text-white pb-6">
+
+    <!-- Xiaomi HyperOS Dynamic Focus Notification Capsule (Transient Top Popup) -->
+    <div id="hyperOsFocusCapsule" class="fixed top-2 left-1/2 -translate-x-1/2 z-50 pointer-events-none hidden w-[90%] max-w-sm">
+        <div class="bg-slate-900/95 border border-cyan-500/40 shadow-2xl shadow-cyan-500/20 rounded-full px-3.5 py-2 flex items-center justify-between backdrop-blur-xl">
+            <div class="flex items-center gap-2.5 min-w-0">
+                <div class="w-7 h-7 rounded-full bg-gradient-to-tr from-brand-500 to-cyan-400 flex items-center justify-center text-slate-950 text-xs font-bold shrink-0">
+                    <i id="focusCapsuleIcon" class="fa-solid fa-droplet"></i>
+                </div>
+                <div class="flex flex-col min-w-0">
+                    <span id="focusCapsuleTitle" class="text-xs font-bold text-white truncate">小米焦点通知 · 补水进度</span>
+                    <span id="focusCapsuleDesc" class="text-[10px] text-cyan-300 truncate">已补充 250ml (目标 2000ml)</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0 ml-2">
+                <span id="focusCapsulePercent" class="text-xs font-extrabold text-brand-400">12%</span>
+                <div class="w-12 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                    <div id="focusCapsuleBar" class="h-full bg-brand-400 transition-all duration-300" style="width: 12%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Navigation Header (Android Native Style) -->
+    <header class="border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md sticky top-0 z-30">
+        <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-600 via-cyan-500 to-teal-400 flex items-center justify-center shadow-md shadow-brand-500/20">
+                    <i class="fa-solid fa-droplet text-white text-sm"></i>
+                </div>
+                <div>
+                    <h1 class="text-base font-bold text-white tracking-tight flex items-center gap-1.5">
+                        AquaTrack <span class="text-[10px] bg-brand-500/20 text-brand-300 px-1.5 py-0.2 rounded border border-brand-500/30 font-semibold">安卓版</span>
+                    </h1>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <!-- Streak Badge -->
+                <div class="flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 px-2.5 py-1 rounded-full text-xs font-semibold">
+                    <i class="fa-solid fa-fire text-amber-500 text-xs"></i>
+                    <span>连续 <span id="streakCount">1</span> 天</span>
+                </div>
+
+                <!-- MCP & Focus Modal Button -->
+                <button onclick="triggerHaptic(); openMcpModal()" class="glass-button px-2.5 py-1.5 rounded-xl text-xs text-purple-300 border-purple-500/30 flex items-center gap-1.5" title="MiClaw / 焦点通知">
+                    <i class="fa-solid fa-robot text-purple-400"></i>
+                    <span class="hidden sm:inline font-medium">MiClaw/焦点</span>
+                </button>
+
+                <!-- Reminder Settings Button -->
+                <button onclick="triggerHaptic(); openReminderModal()" class="glass-button p-2 rounded-xl text-slate-300 hover:text-brand-400" title="补水提醒设置">
+                    <i class="fa-solid fa-bell text-sm"></i>
+                </button>
+
+                <!-- Daily Target Settings Button -->
+                <button onclick="triggerHaptic(); openSettingsModal()" class="glass-button p-2 rounded-xl text-slate-300 hover:text-brand-400" title="目标设置">
+                    <i class="fa-solid fa-gear text-sm"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-3 sm:px-6 py-4 w-full flex-grow grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
+
+        <!-- Left Column: Visual Ring Wave & Quick Actions (5 cols) -->
+        <section class="lg:col-span-5 flex flex-col gap-4">
+            
+            <!-- Hydration Wave Visual Card -->
+            <div class="glass-panel rounded-2xl sm:rounded-3xl p-4 sm:p-5 flex flex-col items-center justify-center relative overflow-hidden shadow-xl">
+                <div class="absolute -top-20 -left-20 w-40 h-40 bg-brand-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+                <!-- Date Header -->
+                <div class="w-full flex justify-between items-center mb-2 z-10">
+                    <span id="currentDateText" class="text-[11px] font-medium text-slate-400 bg-slate-900/80 px-2.5 py-1 rounded-full border border-slate-800">
+                        2026年8月13日 星期四
+                    </span>
+                    <span id="hydrationStatus" class="text-[11px] font-semibold text-brand-400 bg-brand-500/10 border border-brand-500/20 px-2.5 py-1 rounded-full">
+                        补充水分中
+                    </span>
+                </div>
+
+                <!-- Responsive Ring Container -->
+                <div class="relative w-40 h-40 sm:w-52 sm:h-52 rounded-full p-2 bg-slate-900/90 border-4 border-slate-800/90 shadow-inner my-1 flex items-center justify-center">
+                    <div class="w-full h-full rounded-full overflow-hidden relative">
+                        <canvas id="waveCanvas" class="w-full h-full block"></canvas>
+                        
+                        <div class="absolute inset-0 flex flex-col items-center justify-center text-center z-10 drop-shadow-md pointer-events-none">
+                            <span id="percentText" class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">0%</span>
+                            <div class="flex items-baseline gap-1 mt-0.5 text-slate-200">
+                                <span id="currentAmountText" class="text-lg sm:text-xl font-bold text-cyan-300">0</span>
+                                <span class="text-xs text-slate-400">/ <span id="targetAmountText">2000</span> ml</span>
+                            </div>
+                            <span id="remainingText" class="text-[10px] sm:text-xs text-slate-300/90 mt-1">还差 2000 ml 达标</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Stats Grid -->
+                <div class="grid grid-cols-3 w-full gap-2 mt-3 pt-3 border-t border-slate-800/80 text-center">
+                    <div class="p-2 rounded-xl bg-slate-900/50 border border-slate-800/60">
+                        <p class="text-[10px] text-slate-400 mb-0.5">每日目标</p>
+                        <p id="statTarget" class="text-xs font-bold text-slate-200">2000 ml</p>
+                    </div>
+                    <div class="p-2 rounded-xl bg-slate-900/50 border border-slate-800/60">
+                        <p class="text-[10px] text-slate-400 mb-0.5">打卡次数</p>
+                        <p id="statCount" class="text-xs font-bold text-cyan-400">0 次</p>
+                    </div>
+                    <div class="p-2 rounded-xl bg-slate-900/50 border border-slate-800/60">
+                        <p class="text-[10px] text-slate-400 mb-0.5">上次喝水</p>
+                        <p id="statLastTime" class="text-xs font-bold text-slate-200 truncate">未饮水</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Add Water Card -->
+            <div class="glass-panel rounded-2xl sm:rounded-3xl p-4 flex flex-col gap-3">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                        <i class="fa-solid fa-plus-circle text-brand-400"></i> 快捷打卡
+                    </h2>
+                    
+                    <div class="flex items-center gap-1.5">
+                        <select id="drinkTypeSelect" class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-xl px-2.5 py-1 focus:outline-none cursor-pointer">
+                            <!-- Injected dynamically -->
+                        </select>
+                        <button onclick="triggerHaptic(); openDrinkManagerModal()" class="text-xs text-slate-400 hover:text-brand-300 px-2 py-1 rounded-lg border border-slate-700/60 bg-slate-800/50" title="管理饮品">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Dynamic Intake Buttons -->
+                <div id="presetButtonsGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <!-- Dynamic Buttons -->
+                </div>
+
+                <!-- Custom Amount Input -->
+                <button onclick="triggerHaptic(); openCustomAmountModal()" class="w-full py-2.5 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-slate-300 text-xs font-semibold flex items-center justify-center gap-2 transition active:scale-98">
+                    <i class="fa-solid fa-sliders text-brand-400"></i> 输入任意毫升数打卡...
+                </button>
+            </div>
+
+        </section>
+
+        <section class="lg:col-span-7 flex flex-col gap-4">
+
+            <!-- Today's Intake Log Timeline -->
+            <div class="glass-panel rounded-2xl sm:rounded-3xl p-4 flex flex-col gap-3 flex-1 min-h-[250px]">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                        <i class="fa-solid fa-clock-rotate-left text-cyan-400"></i> 今日饮水明细
+                    </h2>
+                    <div class="flex items-center gap-2">
+                        <button id="clearLogsBtn" onclick="triggerHaptic(); openClearConfirmModal()" class="text-[11px] text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 px-2 py-0.5 rounded-full border border-slate-700/60 transition hidden">
+                            <i class="fa-solid fa-trash-can mr-1"></i>清空
+                        </button>
+                        <span id="logCountBadge" class="text-[11px] bg-slate-900 text-slate-400 px-2.5 py-0.5 rounded-full border border-slate-800">
+                            共 0 条
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Timeline Container -->
+                <div id="logListContainer" class="flex-1 max-h-[260px] overflow-y-auto pr-1 flex flex-col gap-2 my-1">
+                    <!-- Dynamic Log Items -->
+                </div>
+            </div>
+
+            <!-- Weekly 7-Day Trend Analytics Card -->
+            <div class="glass-panel rounded-2xl sm:rounded-3xl p-4 flex flex-col gap-2.5">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                        <i class="fa-solid fa-chart-simple text-teal-400"></i> 近7天饮水趋势
+                    </h2>
+                    <div class="text-right">
+                        <span class="text-[10px] text-slate-400">7天日均: </span>
+                        <span id="weeklyAvgText" class="text-xs font-bold text-brand-400">0 ml</span>
+                    </div>
+                </div>
+
+                <!-- 7-Day Bar Chart Canvas -->
+                <div class="w-full h-32 sm:h-36 relative pt-1">
+                    <canvas id="weeklyChartCanvas" class="w-full h-full block"></canvas>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <!-- Modal: Xiaomi HyperOS Focus & MCP Integration -->
+    <div id="mcpModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl sm:rounded-3xl p-5 shadow-2xl relative flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <div class="flex items-center gap-2">
+                    <div class="w-7 h-7 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center border border-purple-500/30 text-xs">
+                        <i class="fa-solid fa-mobile-screen-button"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-white">小米焦点通知与 MiClaw 集成</h3>
+                    </div>
+                </div>
+                <button onclick="closeModal('mcpModal')" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Tab Switching -->
+            <div class="flex border-b border-slate-800">
+                <button onclick="switchMcpTab('focus')" id="mcpTabFocusBtn" class="px-3 py-2 text-xs font-bold text-brand-400 border-b-2 border-brand-400">📱 小米 HyperOS 焦点卡片</button>
+                <button onclick="switchMcpTab('mcp')" id="mcpTabMcpBtn" class="px-3 py-2 text-xs font-bold text-slate-400">🤖 MiClaw / MCP 工具</button>
+            </div>
+
+            <!-- Content Panel 1: HyperOS Focus Notification -->
+            <div id="mcpTabFocusPanel" class="flex flex-col gap-3">
+                <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl flex flex-col gap-2">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold text-white">小米 HyperOS 焦点通知推送 Payload (MIPUSH)</span>
+                        <button onclick="copyFocusSchema()" class="text-[10px] bg-brand-500/20 text-brand-300 border border-brand-500/30 px-2 py-0.5 rounded">复制 JSON</button>
+                    </div>
+                    <pre id="focusSchemaCode" class="bg-slate-900 p-2.5 rounded-lg text-[10px] text-cyan-300 font-mono overflow-x-auto border border-slate-800 max-h-36">
+{
+  "miui.focus.param": {
+    "capsule": {
+      "title": "AquaTrack 补水",
+      "status": "已完成 65%",
+      "icon": "http://domain/icon.png"
+    },
+    "card": {
+      "title": "今日饮水目标",
+      "content": "已补充 1300/2000 ml",
+      "progress": 65
+    }
+  }
+}</pre>
+                </div>
+
+                <button onclick="triggerHyperOSFocusNotification('💧 焦点通知测试：补充 250ml 纯净水', 65, 1300, 2000)" class="py-2 bg-gradient-to-r from-brand-600 to-cyan-600 text-white text-xs font-semibold rounded-xl transition">
+                    ⚡ 模拟在手机顶部触发小米焦点通知胶囊
+                </button>
+            </div>
+
+            <!-- Content Panel 2: MCP / MiClaw Tool -->
+            <div id="mcpTabMcpPanel" class="flex flex-col gap-3 hidden">
+                <div class="bg-purple-950/30 border border-purple-500/20 rounded-xl p-3 flex flex-col gap-2">
+                    <span class="text-xs font-semibold text-purple-300">模拟语音打卡</span>
+                    <div class="flex gap-2">
+                        <input type="text" id="mcpSimInput" placeholder="如: 刚才喝了 300ml 咖啡" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none">
+                        <button onclick="runMcpSimText()" class="px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-xl transition">
+                            发送
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex flex-col gap-1.5">
+                    <span class="text-xs text-slate-400 font-medium">MCP Schema Definition</span>
+                    <pre id="mcpSchemaCode" class="bg-slate-950 border border-slate-800 p-2.5 rounded-xl text-[10px] text-purple-300 font-mono max-h-32 overflow-x-auto">
+{
+  "name": "add_water_intake",
+  "description": "记录饮水量(ml)",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "amount": { "type": "number", "description": "毫升数" },
+      "type": { "type": "string", "description": "饮品类型 (water, coffee, tea等)" }
+    },
+    "required": ["amount"]
+  }
+}</pre>
+                </div>
+            </div>
+
+            <div class="pt-1">
+                <button onclick="closeModal('mcpModal')" class="w-full py-2.5 rounded-xl bg-slate-800 text-slate-200 text-xs font-semibold transition">
+                    关闭
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Custom Drink Manager -->
+    <div id="drinkManagerModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl sm:rounded-3xl p-5 shadow-2xl relative flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-mug-hot text-amber-400"></i> 自定义饮品管理
+                </h3>
+                <button onclick="closeModal('drinkManagerModal')" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Form -->
+            <div class="bg-slate-800/50 border border-slate-700/60 p-3 rounded-2xl flex flex-col gap-2">
+                <p class="text-xs font-bold text-white">添加新饮品分类</p>
+                
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="text-[10px] text-slate-400 block mb-0.5">饮品名称</label>
+                        <input type="text" id="newDrinkName" placeholder="如: 气泡水" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-slate-400 block mb-0.5">图标</label>
+                        <select id="newDrinkIcon" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none">
+                            <option value="fa-glass-water">💧 水玻璃杯</option>
+                            <option value="fa-mug-saucer">☕ 咖啡杯</option>
+                            <option value="fa-mug-hot">🍵 热茶杯</option>
+                            <option value="fa-bottle-water">🍾 水瓶/气泡水</option>
+                            <option value="fa-wine-glass">🍷 果汁/饮品</option>
+                            <option value="fa-cow">🥛 牛奶/奶茶</option>
+                            <option value="fa-lemon">🍋 柠檬水</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="text-[10px] text-slate-400 block mb-0.5">补水系数 (0.1-1.0)</label>
+                        <input type="number" id="newDrinkFactor" step="0.05" min="0.1" max="1.0" value="0.9" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-slate-400 block mb-0.5">默认容量 (ml)</label>
+                        <input type="number" id="newDrinkAmount" step="50" min="50" max="1000" value="250" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none">
+                    </div>
+                </div>
+
+                <button onclick="triggerHaptic(); addNewCustomDrink()" class="w-full py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-xl transition mt-1">
+                    <i class="fa-solid fa-plus mr-1"></i> 确认添加
+                </button>
+            </div>
+
+            <!-- Drinks List -->
+            <div class="flex flex-col gap-2">
+                <span class="text-xs font-semibold text-slate-300">现存饮品</span>
+                <div id="drinkManagerList" class="flex flex-col gap-1.5 max-h-36 overflow-y-auto pr-1">
+                    <!-- Dynamic List -->
+                </div>
+            </div>
+
+            <div class="pt-1">
+                <button onclick="closeModal('drinkManagerModal')" class="w-full py-2.5 rounded-xl bg-slate-800 text-slate-200 text-xs font-semibold transition">
+                    完成
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Reminder & Notification Settings -->
+    <div id="reminderModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl sm:rounded-3xl p-5 shadow-2xl relative flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-bell text-amber-400"></i> 补水提醒与通知设置
+                </h3>
+                <button onclick="closeModal('reminderModal')" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="flex flex-col gap-3">
+                <!-- Toggle: Interval Reminders -->
+                <div class="flex items-center justify-between p-3 rounded-2xl bg-slate-800/60 border border-slate-700/50">
+                    <div>
+                        <p class="text-xs font-bold text-slate-200">循环定时提醒</p>
+                        <p class="text-[10px] text-slate-400">固定间隔提示喝水</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="reminderToggle" class="sr-only peer" onchange="toggleReminder(this.checked)">
+                        <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-500"></div>
+                    </label>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                    <label class="text-xs font-semibold text-slate-300">提醒间隔</label>
+                    <select id="reminderIntervalSelect" onchange="updateReminderConfig()" class="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none">
+                        <option value="30">每 30 分钟</option>
+                        <option value="45">每 45 分钟</option>
+                        <option value="60" selected>每 1 小时 (推荐)</option>
+                        <option value="90">每 1.5 小时</option>
+                        <option value="120">每 2 小时</option>
+                    </select>
+                </div>
+
+                <!-- Scheduled Time Alarms -->
+                <div class="flex flex-col gap-2 border-t border-slate-800 pt-3">
+                    <label class="text-xs font-semibold text-slate-300">每日定点闹钟</label>
+                    
+                    <div class="flex gap-2">
+                        <input type="time" id="newScheduledTime" class="bg-slate-950 border border-slate-700 text-xs text-white rounded-xl px-3 py-1.5 focus:outline-none">
+                        <button onclick="triggerHaptic(); addScheduledTime()" class="px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-xl">
+                            + 添加时间点
+                        </button>
+                    </div>
+
+                    <div id="scheduledTimesPills" class="flex flex-wrap gap-1.5 mt-1">
+                        <!-- Dynamic Pills -->
+                    </div>
+                </div>
+
+                <!-- System Notification Authorization -->
+                <div class="flex items-center justify-between p-3 rounded-2xl bg-slate-800/40 border border-slate-700/50">
+                    <div>
+                        <p class="text-xs font-bold text-slate-200">系统/小米通知权限</p>
+                        <p class="text-[10px] text-slate-400">后台支持顶部状态栏通知</p>
+                    </div>
+                    <button onclick="requestNotificationPermission()" id="notifyAuthBtn" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-xs text-white rounded-xl">
+                        授权通知
+                    </button>
+                </div>
+
+                <div class="p-2.5 bg-brand-500/10 border border-brand-500/20 rounded-2xl flex items-center justify-between">
+                    <span class="text-xs text-brand-300">补水提醒音效：</span>
+                    <button onclick="playReminderSound(); showToast('💧 叮！补水提示');" class="px-3 py-1.5 rounded-xl bg-brand-600 text-white text-xs font-medium transition">
+                        <i class="fa-solid fa-volume-high mr-1"></i> 试听音效
+                    </button>
+                </div>
+            </div>
+
+            <div class="pt-1">
+                <button onclick="closeModal('reminderModal')" class="w-full py-2.5 rounded-xl bg-slate-800 text-slate-200 text-xs font-semibold transition">
+                    完成
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Daily Goal Settings -->
+    <div id="settingsModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-sm rounded-2xl sm:rounded-3xl p-5 shadow-2xl relative flex flex-col gap-4">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-bullseye text-brand-400"></i> 每日目标设置
+                </h3>
+                <button onclick="closeModal('settingsModal')" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="flex flex-col gap-2.5">
+                <label class="text-xs font-semibold text-slate-300">每日饮水目标 (毫升 ml)</label>
+                <div class="flex gap-2">
+                    <input type="number" id="targetInput" min="500" max="6000" step="100" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none">
+                    <span class="inline-flex items-center text-xs text-slate-400 px-3 bg-slate-900 rounded-xl border border-slate-800">ml</span>
+                </div>
+
+                <div class="flex gap-1.5 mt-0.5">
+                    <button onclick="setTargetInputValue(1500)" class="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-lg">1500ml</button>
+                    <button onclick="setTargetInputValue(2000)" class="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-lg">2000ml</button>
+                    <button onclick="setTargetInputValue(2500)" class="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-lg">2500ml</button>
+                    <button onclick="setTargetInputValue(3000)" class="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-lg">3000ml</button>
+                </div>
+            </div>
+
+            <div class="flex gap-2 pt-1">
+                <button onclick="saveSettings()" class="flex-1 py-2.5 px-3 rounded-xl bg-brand-600 text-white text-xs font-semibold transition">
+                    保存设置
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Custom Amount Intake -->
+    <div id="customAmountModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-xs rounded-2xl sm:rounded-3xl p-5 shadow-2xl relative flex flex-col gap-4">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-wine-glass text-cyan-400"></i> 自定义打卡
+                </h3>
+                <button onclick="closeModal('customAmountModal')" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="flex flex-col gap-2">
+                <label class="text-xs font-semibold text-slate-300">本次饮水量 (毫升)</label>
+                <div class="flex gap-2">
+                    <input type="number" id="customInput" min="10" max="2000" placeholder="如: 200" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none">
+                    <span class="inline-flex items-center text-xs text-slate-400 px-3 bg-slate-900 rounded-xl border border-slate-800">ml</span>
+                </div>
+            </div>
+
+            <div class="flex gap-2 pt-1">
+                <button onclick="closeModal('customAmountModal')" class="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-300 text-xs font-semibold">
+                    取消
+                </button>
+                <button onclick="submitCustomWater()" class="flex-1 py-2.5 rounded-xl bg-brand-600 text-white text-xs font-semibold transition">
+                    确认打卡
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Clear Logs Confirmation -->
+    <div id="clearConfirmModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-xs rounded-2xl p-5 shadow-2xl relative flex flex-col gap-3 text-center">
+            <div class="w-10 h-10 rounded-full bg-rose-500/10 text-rose-400 flex items-center justify-center mx-auto text-lg border border-rose-500/20">
+                <i class="fa-solid fa-trash-can"></i>
+            </div>
+            <h3 class="text-sm font-bold text-white">清空今日饮水记录？</h3>
+            <p class="text-xs text-slate-400">此操作将清空今天的所有打卡明细，确认继续吗？</p>
+            <div class="flex gap-2 pt-2">
+                <button onclick="closeModal('clearConfirmModal')" class="flex-1 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold">取消</button>
+                <button onclick="confirmClearAllLogs()" class="flex-1 py-2 rounded-xl bg-rose-600 text-white text-xs font-semibold">确认清空</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast Container -->
+    <div id="toastContainer" class="fixed bottom-4 right-4 left-4 sm:left-auto sm:w-80 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <script>
+        // Android Haptic Vibration Helper
+        function triggerHaptic(duration = 12) {
+            if ('vibrate' in navigator) {
+                try { navigator.vibrate(duration); } catch (e) {}
+            }
+        }
+
+        // App Default State & Storage
+        const DEFAULT_DRINKS = [
+            { id: 'water', name: '纯净水', icon: 'fa-droplet', color: 'text-brand-400', bg: 'bg-brand-500/10', factor: 1.0, defaultAmount: 250 },
+            { id: 'tea', name: '健康茶', icon: 'fa-mug-hot', color: 'text-emerald-400', bg: 'bg-emerald-500/10', factor: 0.9, defaultAmount: 250 },
+            { id: 'coffee', name: '美式咖啡', icon: 'fa-mug-saucer', color: 'text-amber-400', bg: 'bg-amber-500/10', factor: 0.8, defaultAmount: 300 },
+            { id: 'juice', name: '鲜榨果汁', icon: 'fa-glass-water', color: 'text-orange-400', bg: 'bg-orange-500/10', factor: 0.75, defaultAmount: 200 }
+        ];
+
+        const DEFAULT_STATE = {
+            target: 2000,
+            logs: [],
+            weeklyHistory: {},
+            streak: 1,
+            lastStreakDate: '',
+            lastActiveDate: '',
+            reminderEnabled: false,
+            reminderMinutes: 60,
+            scheduledTimes: ['09:30', '11:00', '14:30', '16:30', '20:00'],
+            customDrinks: DEFAULT_DRINKS
+        };
+
+        let appState = { ...DEFAULT_STATE };
+        let reminderIntervalTimer = null;
+        let scheduledCheckTimer = null;
+        let audioCtx = null;
+
+        function getTodayDateKey() {
+            const d = new Date();
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+
+        function formatDisplayDate() {
+            const d = new Date();
+            const dayNames = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+            return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${dayNames[d.getDay()]}`;
+        }
+
+        function saveState() {
+            try {
+                localStorage.setItem('aquatrack_state', JSON.stringify(appState));
+            } catch (e) {
+                console.warn('LocalStorage save failed:', e);
+            }
+        }
+
+        function loadState() {
+            try {
+                const saved = localStorage.getItem('aquatrack_state');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    appState = { ...DEFAULT_STATE, ...parsed };
+                    if (!appState.customDrinks || appState.customDrinks.length === 0) {
+                        appState.customDrinks = [...DEFAULT_DRINKS];
+                    }
+                }
+            } catch (e) {
+                appState = { ...DEFAULT_STATE };
+            }
+
+            const todayKey = getTodayDateKey();
+            if (appState.lastActiveDate !== todayKey) {
+                if (appState.lastActiveDate && appState.logs.length > 0) {
+                    appState.weeklyHistory[appState.lastActiveDate] = getTodayTotalIntake();
+                }
+
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                const yesterdayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+
+                if (appState.lastStreakDate !== yesterdayKey && appState.lastStreakDate !== todayKey) {
+                    appState.streak = 1;
+                }
+
+                appState.logs = [];
+                appState.lastActiveDate = todayKey;
+                saveState();
+            }
+        }
+
+        function getTodayTotalIntake() {
+            return appState.logs.reduce((sum, item) => sum + (parseInt(item.amount) || 0), 0);
+        }
+
+        // Xiaomi HyperOS Dynamic Focus Capsule Trigger
+        function triggerHyperOSFocusNotification(titleMsg, percent, total, target) {
+            const capsule = document.getElementById('hyperOsFocusCapsule');
+            if (!capsule) return;
+
+            document.getElementById('focusCapsuleTitle').innerText = titleMsg || '补水完成';
+            document.getElementById('focusCapsuleDesc').innerText = `已补充 ${total}/${target} ml`;
+            document.getElementById('focusCapsulePercent').innerText = `${percent}%`;
+            document.getElementById('focusCapsuleBar').style.width = `${percent}%`;
+
+            capsule.classList.remove('hidden', 'hyperos-focus-active');
+            void capsule.offsetWidth; // Force Reflow
+            capsule.classList.add('hyperos-focus-active');
+
+            setTimeout(() => {
+                capsule.classList.add('hidden');
+                capsule.classList.remove('hyperos-focus-active');
+            }, 4000);
+        }
+
+        function playReminderSound() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(650, now);
+                osc.frequency.exponentialRampToValueAtTime(150, now + 0.18);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.18);
+            } catch (e) {}
+        }
+
+        // Intake Operations
+        function addWater(amount, drinkTypeId = 'water', source = 'manual', customName = null) {
+            triggerHaptic(20);
+            const drink = appState.customDrinks.find(d => d.id === drinkTypeId) || DEFAULT_DRINKS[0];
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+
+            const prevTotal = getTodayTotalIntake();
+
+            const newLog = {
+                id: String(Date.now() + Math.random().toString(36).substr(2, 4)),
+                amount: parseInt(amount),
+                type: drink.id,
+                typeName: customName || drink.name,
+                time: timeStr,
+                source: source
+            };
+
+            appState.logs.unshift(newLog);
+
+            const newTotal = getTodayTotalIntake();
+            const todayKey = getTodayDateKey();
+            appState.weeklyHistory[todayKey] = newTotal;
+            const percent = Math.min(100, Math.round((newTotal / appState.target) * 100));
+
+            // Trigger Xiaomi HyperOS Transient Focus Notification Capsule
+            triggerHyperOSFocusNotification(`💧 打卡: ${customName || drink.name} +${amount}ml`, percent, newTotal, appState.target);
+
+            if (prevTotal < appState.target && newTotal >= appState.target) {
+                appState.streak = (appState.streak || 0) + 1;
+                appState.lastStreakDate = todayKey;
+                try { confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } }); } catch (e) {}
+                showToast(`🎉 达成今日补水目标 (${newTotal}/${appState.target}ml)!`, 'success');
+            } else {
+                showToast(`已记录 +${amount} ml (${customName || drink.name})`, 'success');
+            }
+
+            saveState();
+            updateUI();
+        }
+
+        function deleteLog(logId) {
+            triggerHaptic(15);
+            logId = String(logId);
+            appState.logs = appState.logs.filter(item => String(item.id) !== logId);
+
+            const todayKey = getTodayDateKey();
+            appState.weeklyHistory[todayKey] = getTodayTotalIntake();
+
+            saveState();
+            updateUI();
+            showToast('已删除此记录');
+        }
+
+        function openClearConfirmModal() {
+            document.getElementById('clearConfirmModal').classList.remove('hidden');
+        }
+
+        function confirmClearAllLogs() {
+            appState.logs = [];
+            const todayKey = getTodayDateKey();
+            appState.weeklyHistory[todayKey] = 0;
+            saveState();
+            updateUI();
+            closeModal('clearConfirmModal');
+            showToast('今日所有饮水记录已清空');
+        }
+
+        function renderDrinkOptionsAndPresets() {
+            const select = document.getElementById('drinkTypeSelect');
+            const grid = document.getElementById('presetButtonsGrid');
+
+            if (select) {
+                const currentVal = select.value || 'water';
+                select.innerHTML = appState.customDrinks.map(d => 
+                    `<option value="${d.id}" ${d.id === currentVal ? 'selected' : ''}>${d.name}</option>`
+                ).join('');
+            }
+
+            if (grid) {
+                grid.innerHTML = appState.customDrinks.map(d => `
+                    <button onclick="addWater(${d.defaultAmount || 250}, '${d.id}')" class="glass-button p-2.5 rounded-2xl flex flex-col items-center justify-center gap-0.5 text-center active:scale-95">
+                        <div class="w-7 h-7 rounded-xl ${d.bg || 'bg-brand-500/10'} flex items-center justify-center ${d.color || 'text-brand-400'}">
+                            <i class="fa-solid ${d.icon || 'fa-droplet'} text-xs"></i>
+                        </div>
+                        <span class="text-xs font-bold text-slate-200 mt-1">${d.name}</span>
+                        <span class="text-[10px] text-slate-400">+${d.defaultAmount || 250}ml</span>
+                    </button>
+                `).join('');
+            }
+        }
+
+        function renderDrinkManagerList() {
+            const container = document.getElementById('drinkManagerList');
+            if (!container) return;
+
+            container.innerHTML = appState.customDrinks.map(d => {
+                const isDefault = DEFAULT_DRINKS.some(def => def.id === d.id);
+                return `
+                    <div class="flex items-center justify-between p-2 rounded-xl bg-slate-800/60 border border-slate-700/50 text-xs">
+                        <div class="flex items-center gap-2">
+                            <div class="w-6 h-6 rounded-lg ${d.bg || 'bg-brand-500/10'} ${d.color || 'text-brand-400'} flex items-center justify-center text-xs">
+                                <i class="fa-solid ${d.icon || 'fa-droplet'}"></i>
+                            </div>
+                            <span class="font-bold text-white">${d.name} (${d.defaultAmount || 250}ml)</span>
+                        </div>
+                        ${!isDefault ? `
+                            <button onclick="deleteCustomDrink('${d.id}')" class="text-slate-400 hover:text-rose-400 p-1">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        ` : '<span class="text-[10px] text-slate-500">默认</span>'}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function addNewCustomDrink() {
+            const name = document.getElementById('newDrinkName').value.trim();
+            const icon = document.getElementById('newDrinkIcon').value;
+            const factor = parseFloat(document.getElementById('newDrinkFactor').value) || 0.9;
+            const defaultAmount = parseInt(document.getElementById('newDrinkAmount').value) || 250;
+
+            if (!name) {
+                showToast('请输入饮品名称', 'warning');
+                return;
+            }
+
+            const newDrink = {
+                id: 'custom_' + Date.now(),
+                name: name,
+                icon: icon,
+                color: 'text-purple-400',
+                bg: 'bg-purple-500/10',
+                factor: factor,
+                defaultAmount: defaultAmount
+            };
+
+            appState.customDrinks.push(newDrink);
+            saveState();
+            renderDrinkManagerList();
+            renderDrinkOptionsAndPresets();
+            document.getElementById('newDrinkName').value = '';
+            showToast(`已添加: ${name}`, 'success');
+        }
+
+        function deleteCustomDrink(drinkId) {
+            appState.customDrinks = appState.customDrinks.filter(d => d.id !== drinkId);
+            saveState();
+            renderDrinkManagerList();
+            renderDrinkOptionsAndPresets();
+            showToast('已删除自定义饮品');
+        }
+
+        function toggleReminder(enabled) {
+            appState.reminderEnabled = enabled;
+            saveState();
+
+            if (reminderIntervalTimer) {
+                clearInterval(reminderIntervalTimer);
+                reminderIntervalTimer = null;
+            }
+
+            if (enabled) {
+                const intervalMs = (appState.reminderMinutes || 60) * 60 * 1000;
+                reminderIntervalTimer = setInterval(() => {
+                    triggerReminderAlert('💧 补水提醒：定时补充一杯水吧！');
+                }, intervalMs);
+                showToast(`已开启 ${appState.reminderMinutes || 60} 分钟循环提醒`, 'success');
+            } else {
+                showToast('已关闭循环提醒');
+            }
+        }
+
+        function updateReminderConfig() {
+            const val = parseInt(document.getElementById('reminderIntervalSelect').value);
+            appState.reminderMinutes = val;
+            saveState();
+            if (appState.reminderEnabled) toggleReminder(true);
+        }
+
+        function addScheduledTime() {
+            const val = document.getElementById('newScheduledTime').value;
+            if (!val) return;
+            if (!appState.scheduledTimes.includes(val)) {
+                appState.scheduledTimes.push(val);
+                appState.scheduledTimes.sort();
+                saveState();
+                renderScheduledTimesPills();
+                showToast(`已添加 ${val} 定点提醒`, 'success');
+            }
+        }
+
+        function removeScheduledTime(timeStr) {
+            appState.scheduledTimes = appState.scheduledTimes.filter(t => t !== timeStr);
+            saveState();
+            renderScheduledTimesPills();
+        }
+
+        function renderScheduledTimesPills() {
+            const container = document.getElementById('scheduledTimesPills');
+            if (!container) return;
+
+            container.innerHTML = appState.scheduledTimes.map(t => `
+                <span class="inline-flex items-center gap-1 text-[11px] bg-slate-800 text-slate-200 border border-slate-700 px-2 py-0.5 rounded-lg">
+                    ${t}
+                    <button onclick="removeScheduledTime('${t}')" class="text-slate-400 hover:text-rose-400 ml-0.5">
+                        <i class="fa-solid fa-xmark text-[10px]"></i>
+                    </button>
+                </span>
+            `).join('');
+        }
+
+        let lastTriggeredMinute = '';
+        function initScheduledTimerCheck() {
+            if (scheduledCheckTimer) clearInterval(scheduledCheckTimer);
+            scheduledCheckTimer = setInterval(() => {
+                const now = new Date();
+                const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                
+                if (appState.scheduledTimes.includes(timeStr) && lastTriggeredMinute !== timeStr) {
+                    lastTriggeredMinute = timeStr;
+                    triggerReminderAlert(`⏰ 喝水提醒：现在是 ${timeStr}，按时补水！`);
+                }
+            }, 10000);
+        }
+
+        function triggerReminderAlert(msg) {
+            playReminderSound();
+            showToast(msg, 'info');
+
+            const total = getTodayTotalIntake();
+            const percent = Math.min(100, Math.round((total / appState.target) * 100));
+            triggerHyperOSFocusNotification(msg, percent, total, appState.target);
+
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification('AquaTrack 补水管家', {
+                    body: msg,
+                    icon: 'https://cdn-icons-png.flaticon.com/512/3105/3105807.png'
+                });
+            }
+        }
+
+        function requestNotificationPermission() {
+            if (!('Notification' in window)) {
+                showToast('当前系统不直接支持桌面推送', 'warning');
+                return;
+            }
+            Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                    showToast('已成功开启系统通知授权', 'success');
+                    const btn = document.getElementById('notifyAuthBtn');
+                    if (btn) btn.innerText = '已授权';
+                }
+            });
+        }
+
+        function updateUI() {
+            document.getElementById('currentDateText').innerText = formatDisplayDate();
+            document.getElementById('streakCount').innerText = appState.streak || 1;
+
+            const total = getTodayTotalIntake();
+            const target = appState.target;
+            const percent = Math.min(100, Math.round((total / target) * 100));
+            const remaining = Math.max(0, target - total);
+
+            document.getElementById('percentText').innerText = `${percent}%`;
+            document.getElementById('currentAmountText').innerText = total;
+            document.getElementById('targetAmountText').innerText = target;
+            document.getElementById('statTarget').innerText = `${target} ml`;
+            document.getElementById('statCount').innerText = `${appState.logs.length} 次`;
+
+            if (remaining > 0) {
+                document.getElementById('remainingText').innerText = `还差 ${remaining} ml 达标`;
+                document.getElementById('hydrationStatus').innerText = '补充水分中';
+                document.getElementById('hydrationStatus').className = 'text-[11px] font-semibold text-brand-400 bg-brand-500/10 border border-brand-500/20 px-2.5 py-1 rounded-full';
+            } else {
+                document.getElementById('remainingText').innerText = '今日目标已成功完成！';
+                document.getElementById('hydrationStatus').innerText = '目标已达成 🥳';
+                document.getElementById('hydrationStatus').className = 'text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full';
+            }
+
+            if (appState.logs.length > 0) {
+                document.getElementById('statLastTime').innerText = appState.logs[0].time;
+            } else {
+                document.getElementById('statLastTime').innerText = '未饮水';
+            }
+
+            renderLogList();
+            renderWeeklyChart();
+            renderDrinkOptionsAndPresets();
+            renderScheduledTimesPills();
+
+            targetWavePercent = percent;
+        }
+
+        function renderLogList() {
+            const container = document.getElementById('logListContainer');
+            const clearBtn = document.getElementById('clearLogsBtn');
+            const logCountBadge = document.getElementById('logCountBadge');
+
+            if (logCountBadge) logCountBadge.innerText = `共 ${appState.logs.length} 条`;
+            if (clearBtn) clearBtn.style.display = appState.logs.length > 0 ? 'inline-flex' : 'none';
+            if (!container) return;
+
+            if (appState.logs.length === 0) {
+                container.innerHTML = `
+                    <div class="h-32 flex flex-col items-center justify-center text-slate-500 gap-1.5 border border-dashed border-slate-800 rounded-2xl">
+                        <i class="fa-solid fa-cup-straw text-xl opacity-40"></i>
+                        <p class="text-xs">今天还没有饮水记录</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = appState.logs.map(log => {
+                const meta = appState.customDrinks.find(d => d.id === log.type) || DEFAULT_DRINKS[0];
+                return `
+                    <div class="glass-panel p-2.5 rounded-2xl flex items-center justify-between transition">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-xl ${meta.bg || 'bg-brand-500/10'} flex items-center justify-center ${meta.color || 'text-brand-400'} text-xs">
+                                <i class="fa-solid ${meta.icon || 'fa-droplet'}"></i>
+                            </div>
+                            <div>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-xs font-bold text-white">+${log.amount} ml</span>
+                                    <span class="text-[10px] text-slate-400 px-1.5 py-0.2 rounded bg-slate-900 border border-slate-800">${log.typeName || meta.name}</span>
+                                </div>
+                                <span class="text-[10px] text-slate-400">${log.time}</span>
+                            </div>
+                        </div>
+                        <button onclick="deleteLog('${log.id}')" class="text-slate-400 hover:text-rose-400 p-1.5 rounded-xl text-xs" title="删除记录">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Canvas Wave Animation Renderer
+        let currentWavePercent = 0;
+        let targetWavePercent = 0;
+        let waveStep = 0;
+
+        function initWaveCanvas() {
+            const canvas = document.getElementById('waveCanvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+
+            function resize() {
+                const rect = canvas.getBoundingClientRect();
+                canvas.width = rect.width * window.devicePixelRatio;
+                canvas.height = rect.height * window.devicePixelRatio;
+            }
+            resize();
+            window.addEventListener('resize', resize);
+
+            function draw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                currentWavePercent += (targetWavePercent - currentWavePercent) * 0.05;
+
+                const width = canvas.width;
+                const height = canvas.height;
+                const fillRatio = Math.max(0, Math.min(1, currentWavePercent / 100));
+                const fillY = height * (1 - fillRatio);
+
+                waveStep += 0.04;
+
+                ctx.fillStyle = 'rgba(2, 132, 199, 0.45)';
+                ctx.beginPath();
+                ctx.moveTo(0, height);
+                for (let x = 0; x <= width; x += 5) {
+                    const y = fillY + Math.sin((x * 0.018) + waveStep) * 8;
+                    ctx.lineTo(x, y);
+                }
+                ctx.lineTo(width, height);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.fillStyle = 'rgba(56, 189, 248, 0.75)';
+                ctx.beginPath();
+                ctx.moveTo(0, height);
+                for (let x = 0; x <= width; x += 5) {
+                    const y = fillY + Math.cos((x * 0.02) + waveStep * 1.2) * 6;
+                    ctx.lineTo(x, y);
+                }
+                ctx.lineTo(width, height);
+                ctx.closePath();
+                ctx.fill();
+
+                requestAnimationFrame(draw);
+            }
+
+            draw();
+        }
+
+        // 7-Day Trend Canvas Chart
+        function renderWeeklyChart() {
+            const canvas = document.getElementById('weeklyChartCanvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * window.devicePixelRatio;
+            canvas.height = rect.height * window.devicePixelRatio;
+
+            const w = canvas.width;
+            const h = canvas.height;
+
+            ctx.clearRect(0, 0, w, h);
+
+            const days = [];
+            const dayLabels = [];
+            const now = new Date();
+
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(now.getDate() - i);
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                const key = `${d.getFullYear()}-${month}-${day}`;
+                
+                days.push(key);
+                const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+                dayLabels.push(i === 0 ? '今天' : `周${dayNames[d.getDay()]}`);
+            }
+
+            const values = days.map(key => appState.weeklyHistory[key] || 0);
+            const sum = values.reduce((a, b) => a + b, 0);
+            const avg = Math.round(sum / 7);
+            document.getElementById('weeklyAvgText').innerText = `${avg} ml`;
+
+            const maxVal = Math.max(...values, appState.target, 1000);
+            const paddingBottom = 24 * window.devicePixelRatio;
+            const paddingTop = 16 * window.devicePixelRatio;
+            const chartHeight = h - paddingBottom - paddingTop;
+            const barWidth = (w / 7) * 0.36;
+            const stepX = w / 7;
+
+            // Target reference line
+            const targetY = paddingTop + chartHeight * (1 - (appState.target / maxVal));
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.25)';
+            ctx.lineWidth = 1 * window.devicePixelRatio;
+            ctx.setLineDash([3 * window.devicePixelRatio, 3 * window.devicePixelRatio]);
+            ctx.beginPath();
+            ctx.moveTo(0, targetY);
+            ctx.lineTo(w, targetY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            values.forEach((val, idx) => {
+                const centerX = stepX * idx + stepX / 2;
+                const barH = (val / maxVal) * chartHeight;
+                const x = centerX - barWidth / 2;
+                const y = paddingTop + (chartHeight - barH);
+
+                const isTargetReached = val >= appState.target;
+                const grad = ctx.createLinearGradient(0, y, 0, paddingTop + chartHeight);
+                if (isTargetReached) {
+                    grad.addColorStop(0, '#38bdf8');
+                    grad.addColorStop(1, '#0284c7');
+                } else {
+                    grad.addColorStop(0, '#0284c7');
+                    grad.addColorStop(1, '#0f172a');
+                }
+
+                const radius = 4 * window.devicePixelRatio;
+                ctx.fillStyle = val > 0 ? grad : 'rgba(30, 41, 59, 0.5)';
+                const renderH = Math.max(barH, 3 * window.devicePixelRatio);
+                const renderY = val > 0 ? y : paddingTop + chartHeight - renderH;
+
+                ctx.beginPath();
+                ctx.roundRect(x, renderY, barWidth, renderH, [radius, radius, 0, 0]);
+                ctx.fill();
+
+                ctx.fillStyle = idx === 6 ? '#38bdf8' : '#94a3b8';
+                ctx.font = `${10 * window.devicePixelRatio}px "Plus Jakarta Sans", sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.fillText(dayLabels[idx], centerX, h - 6 * window.devicePixelRatio);
+
+                if (val > 0) {
+                    ctx.fillStyle = '#cbd5e1';
+                    ctx.font = `${9 * window.devicePixelRatio}px "Plus Jakarta Sans", sans-serif`;
+                    ctx.fillText(`${val}`, centerX, renderY - 3 * window.devicePixelRatio);
+                }
+            });
+        }
+
+        // Modal Operations
+        function switchMcpTab(tab) {
+            triggerHaptic();
+            const focusBtn = document.getElementById('mcpTabFocusBtn');
+            const mcpBtn = document.getElementById('mcpTabMcpBtn');
+            const focusPanel = document.getElementById('mcpTabFocusPanel');
+            const mcpPanel = document.getElementById('mcpTabMcpPanel');
+
+            if (tab === 'focus') {
+                focusBtn.className = 'px-3 py-2 text-xs font-bold text-brand-400 border-b-2 border-brand-400';
+                mcpBtn.className = 'px-3 py-2 text-xs font-bold text-slate-400';
+                focusPanel.classList.remove('hidden');
+                mcpPanel.classList.add('hidden');
+            } else {
+                mcpBtn.className = 'px-3 py-2 text-xs font-bold text-purple-400 border-b-2 border-purple-400';
+                focusBtn.className = 'px-3 py-2 text-xs font-bold text-slate-400';
+                mcpPanel.classList.remove('hidden');
+                focusPanel.classList.add('hidden');
+            }
+        }
+
+        function runMcpSimText() {
+            triggerHaptic();
+            const inputEl = document.getElementById('mcpSimInput');
+            const text = inputEl.value.trim();
+            if (!text) return;
+
+            let amount = 250;
+            const numMatch = text.match(/(\d+)\s*(ml|毫升|cc)?/i);
+            if (numMatch) amount = parseInt(numMatch[1]);
+
+            addWater(amount, 'water', 'mcp');
+            inputEl.value = '';
+            closeModal('mcpModal');
+        }
+
+        function copyFocusSchema() {
+            const text = document.getElementById('focusSchemaCode').innerText;
+            navigator.clipboard ? navigator.clipboard.writeText(text) : document.execCommand('copy');
+            showToast('已复制 HyperOS 焦点通知 JSON');
+        }
+
+        function openSettingsModal() { document.getElementById('targetInput').value = appState.target; document.getElementById('settingsModal').classList.remove('hidden'); }
+        function openCustomAmountModal() { document.getElementById('customInput').value = ''; document.getElementById('customAmountModal').classList.remove('hidden'); }
+        function openReminderModal() { document.getElementById('reminderToggle').checked = appState.reminderEnabled; document.getElementById('reminderIntervalSelect').value = appState.reminderMinutes || 60; renderScheduledTimesPills(); document.getElementById('reminderModal').classList.remove('hidden'); }
+        function openDrinkManagerModal() { renderDrinkManagerList(); document.getElementById('drinkManagerModal').classList.remove('hidden'); }
+        function openMcpModal() { document.getElementById('mcpModal').classList.remove('hidden'); }
+        function closeModal(modalId) { document.getElementById(modalId).classList.add('hidden'); }
+        function setTargetInputValue(val) { triggerHaptic(); document.getElementById('targetInput').value = val; }
+
+        function saveSettings() {
+            const inputVal = parseInt(document.getElementById('targetInput').value);
+            if (inputVal && inputVal >= 500 && inputVal <= 6000) {
+                appState.target = inputVal;
+                saveState();
+                updateUI();
+                closeModal('settingsModal');
+                showToast(`每日目标已设定为 ${inputVal} ml`);
+            } else {
+                showToast('请输入 500 - 6000 ml 之间的有效目标', 'warning');
+            }
+        }
+
+        function submitCustomWater() {
+            const val = parseInt(document.getElementById('customInput').value);
+            if (val && val > 0 && val <= 3000) {
+                addWater(val);
+                closeModal('customAmountModal');
+            } else {
+                showToast('请输入有效水量 (1-3000ml)', 'warning');
+            }
+        }
+
+        function showToast(msg, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            if (!container) return;
+
+            const toast = document.createElement('div');
+            let bgClass = 'bg-slate-900/95 border-brand-500/40 text-brand-300';
+            if (type === 'success') bgClass = 'bg-slate-900/95 border-emerald-500/40 text-emerald-300';
+            if (type === 'warning') bgClass = 'bg-slate-900/95 border-amber-500/40 text-amber-300';
+
+            toast.className = `pointer-events-auto px-3.5 py-2.5 rounded-2xl border ${bgClass} backdrop-blur-md shadow-xl text-xs font-semibold flex items-center justify-between transform transition-all duration-300 translate-y-3 opacity-0`;
+            toast.innerHTML = `<span>${msg}</span>`;
+
+            container.appendChild(toast);
+
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-3', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-1');
+                setTimeout(() => toast.remove(), 250);
+            }, 3000);
+        }
+
+        // Boot Initialization
+        window.onload = function() {
+            loadState();
+            initWaveCanvas();
+            updateUI();
+            initScheduledTimerCheck();
+
+            if (appState.reminderEnabled) {
+                toggleReminder(true);
+            }
+        };
+    </script>
+</body>
+</html>
